@@ -1,0 +1,9 @@
+# Image de base officielle Jupyter avec Python 3.11
+FROM jupyter/minimal-notebook:python-3.11
+
+# Copie le fichier de dépendances dans le conteneur
+COPY requirements.txt /tmp/requirements.txt
+
+# Met à jour pip puis installe toutes les dépendances
+RUN python -m pip install --no-cache-dir --upgrade pip \
+    && python -m pip install --no-cache-dir -r /tmp/requirements.txt
