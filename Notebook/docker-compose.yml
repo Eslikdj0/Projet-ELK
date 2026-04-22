@@ -11,7 +11,7 @@ services:
       - xpack.security.enabled=false
       - ES_JAVA_OPTS=-Xms512m -Xmx512m
       - http.cors.enabled=true
-      - http.cors.allow-origin=*
+      - http.cors.allow-origin="*"
       - http.cors.allow-headers=Content-Type,Content-Length,Authorization
       - http.cors.allow-methods=GET,POST,OPTIONS,HEAD
     ports:
