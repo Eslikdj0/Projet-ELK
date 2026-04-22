@@ -1,0 +1,561 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CinéSearch — Moteur de recherche films</title>
+  <meta name="description" content="Mini moteur de recherche full-text connecté à Elasticsearch pour explorer la base movies_clean." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    /* ===== RESET & TOKENS ===== */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg-primary: #0a0e1a;
+      --bg-card: rgba(255,255,255,0.04);
+      --bg-card-hover: rgba(255,255,255,0.07);
+      --bg-glass: rgba(15,20,40,0.85);
+      --accent: #6c5ce7;
+      --accent-light: #a29bfe;
+      --accent-glow: rgba(108,92,231,0.35);
+      --text-primary: #e8e6f0;
+      --text-secondary: #8b8a9e;
+      --text-muted: #5a5970;
+      --border: rgba(255,255,255,0.06);
+      --success: #00cec9;
+      --warning: #fdcb6e;
+      --danger: #e17055;
+      --radius: 12px;
+      --radius-sm: 8px;
+      --shadow: 0 8px 32px rgba(0,0,0,0.4);
+      --font: 'Inter', -apple-system, sans-serif;
+      --transition: 0.25s cubic-bezier(.4,0,.2,1);
+    }
+
+    body {
+      font-family: var(--font);
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      min-height: 100vh;
+      line-height: 1.6;
+      overflow-x: hidden;
+    }
+
+    /* Animated gradient background */
+    body::before {
+      content: '';
+      position: fixed; inset: 0;
+      background:
+        radial-gradient(ellipse 600px 400px at 20% 20%, rgba(108,92,231,0.12), transparent),
+        radial-gradient(ellipse 500px 500px at 80% 80%, rgba(0,206,201,0.08), transparent);
+      pointer-events: none; z-index: 0;
+    }
+
+    /* ===== LAYOUT ===== */
+    .app { position: relative; z-index: 1; max-width: 1200px; margin: 0 auto; padding: 2rem 1.5rem 4rem; }
+
+    /* ===== HEADER ===== */
+    .header { text-align: center; margin-bottom: 2.5rem; }
+    .header h1 {
+      font-size: 2.4rem; font-weight: 800;
+      background: linear-gradient(135deg, var(--accent-light), var(--accent), var(--success));
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+      background-clip: text; letter-spacing: -0.5px;
+    }
+    .header p { color: var(--text-secondary); margin-top: .4rem; font-size: .95rem; }
+
+    /* ===== SEARCH BAR ===== */
+    .search-section {
+      background: var(--bg-glass);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 1.5rem;
+      backdrop-filter: blur(20px);
+      box-shadow: var(--shadow);
+      margin-bottom: 1.5rem;
+    }
+    .search-row { display: flex; gap: .75rem; margin-bottom: 1rem; }
+    .search-input-wrap {
+      flex: 1; position: relative;
+    }
+    .search-input-wrap svg {
+      position: absolute; left: 14px; top: 50%; transform: translateY(-50%);
+      width: 18px; height: 18px; color: var(--text-muted);
+    }
+    #search-input {
+      width: 100%; padding: .85rem 1rem .85rem 2.8rem;
+      background: rgba(255,255,255,0.05); border: 1px solid var(--border);
+      border-radius: var(--radius); color: var(--text-primary);
+      font-size: 1rem; font-family: var(--font);
+      transition: var(--transition);
+    }
+    #search-input:focus {
+      outline: none; border-color: var(--accent);
+      box-shadow: 0 0 0 3px var(--accent-glow);
+    }
+    #search-input::placeholder { color: var(--text-muted); }
+    .btn-search {
+      padding: .85rem 2rem; border: none; border-radius: var(--radius);
+      background: linear-gradient(135deg, var(--accent), #8b6ce7);
+      color: #fff; font-weight: 600; font-size: .95rem; cursor: pointer;
+      font-family: var(--font); transition: var(--transition);
+      white-space: nowrap;
+    }
+    .btn-search:hover { transform: translateY(-1px); box-shadow: 0 6px 20px var(--accent-glow); }
+
+    /* ===== FILTERS ===== */
+    .filters { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: .75rem; }
+    .filter-group label {
+      display: block; font-size: .75rem; font-weight: 600;
+      color: var(--text-secondary); text-transform: uppercase;
+      letter-spacing: .5px; margin-bottom: .35rem;
+    }
+    .filter-group select,
+    .filter-group input {
+      width: 100%; padding: .6rem .75rem;
+      background: rgba(255,255,255,0.05); border: 1px solid var(--border);
+      border-radius: var(--radius-sm); color: var(--text-primary);
+      font-size: .85rem; font-family: var(--font);
+      transition: var(--transition);
+    }
+    .filter-group select:focus,
+    .filter-group input:focus {
+      outline: none; border-color: var(--accent);
+      box-shadow: 0 0 0 3px var(--accent-glow);
+    }
+    .filter-group select option { background: #1a1e30; }
+
+    /* ===== STATUS BAR ===== */
+    .status-bar {
+      display: flex; justify-content: space-between; align-items: center;
+      margin-bottom: 1rem; padding: 0 .25rem;
+    }
+    .status-bar .count { font-size: .9rem; color: var(--text-secondary); }
+    .status-bar .count strong { color: var(--accent-light); font-weight: 700; }
+    .status-bar .time { font-size: .8rem; color: var(--text-muted); }
+
+    /* ===== RESULTS ===== */
+    .results { display: flex; flex-direction: column; gap: 1rem; }
+
+    .movie-card {
+      display: grid; grid-template-columns: 90px 1fr; gap: 1.25rem;
+      background: var(--bg-card); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 1.25rem;
+      transition: var(--transition);
+    }
+    .movie-card:hover {
+      background: var(--bg-card-hover); border-color: rgba(108,92,231,0.2);
+      transform: translateY(-2px); box-shadow: 0 12px 40px rgba(0,0,0,0.3);
+    }
+
+    .movie-poster {
+      width: 90px; height: 135px; border-radius: var(--radius-sm);
+      object-fit: cover; background: rgba(255,255,255,0.03);
+    }
+    .movie-poster-placeholder {
+      width: 90px; height: 135px; border-radius: var(--radius-sm);
+      background: linear-gradient(135deg, rgba(108,92,231,0.15), rgba(0,206,201,0.1));
+      display: flex; align-items: center; justify-content: center;
+      font-size: 2rem; color: var(--text-muted);
+    }
+
+    .movie-info h3 {
+      font-size: 1.15rem; font-weight: 700; margin-bottom: .3rem;
+      display: flex; align-items: center; gap: .5rem; flex-wrap: wrap;
+    }
+    .movie-info h3 .year { font-weight: 400; color: var(--text-secondary); font-size: .9rem; }
+
+    .movie-meta {
+      display: flex; flex-wrap: wrap; gap: .5rem; margin: .5rem 0;
+    }
+    .badge {
+      padding: .2rem .6rem; border-radius: 20px; font-size: .7rem;
+      font-weight: 600; text-transform: uppercase; letter-spacing: .3px;
+    }
+    .badge-genre { background: rgba(108,92,231,0.15); color: var(--accent-light); }
+    .badge-lang { background: rgba(0,206,201,0.15); color: var(--success); }
+    .badge-score {
+      background: rgba(253,203,110,0.15); color: var(--warning);
+    }
+
+    .movie-overview {
+      font-size: .85rem; color: var(--text-secondary); line-height: 1.5;
+      display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical;
+      overflow: hidden; margin-top: .3rem;
+    }
+
+    .movie-footer {
+      display: flex; gap: 1rem; margin-top: .5rem; font-size: .78rem; color: var(--text-muted);
+    }
+    .movie-footer span { display: flex; align-items: center; gap: .3rem; }
+
+    /* ===== PAGINATION ===== */
+    .pagination {
+      display: flex; justify-content: center; align-items: center;
+      gap: .5rem; margin-top: 2rem;
+    }
+    .pagination button {
+      padding: .55rem 1rem; border: 1px solid var(--border);
+      border-radius: var(--radius-sm); background: var(--bg-card);
+      color: var(--text-primary); font-family: var(--font);
+      font-size: .85rem; cursor: pointer; transition: var(--transition);
+    }
+    .pagination button:hover:not(:disabled) {
+      background: var(--bg-card-hover); border-color: var(--accent);
+    }
+    .pagination button.active {
+      background: var(--accent); border-color: var(--accent); font-weight: 700;
+    }
+    .pagination button:disabled { opacity: .3; cursor: default; }
+
+    /* ===== EMPTY / LOADING ===== */
+    .empty-state {
+      text-align: center; padding: 4rem 2rem; color: var(--text-muted);
+    }
+    .empty-state svg { width: 64px; height: 64px; margin-bottom: 1rem; opacity: .4; }
+    .empty-state h3 { color: var(--text-secondary); margin-bottom: .5rem; }
+
+    .loading {
+      display: none; text-align: center; padding: 2rem;
+    }
+    .loading.show { display: block; }
+    .spinner {
+      width: 36px; height: 36px; border: 3px solid var(--border);
+      border-top-color: var(--accent); border-radius: 50%;
+      animation: spin .8s linear infinite; margin: 0 auto 1rem;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .error-msg {
+      background: rgba(225,112,85,0.1); border: 1px solid rgba(225,112,85,0.2);
+      border-radius: var(--radius); padding: 1rem 1.25rem;
+      color: var(--danger); font-size: .9rem; display: none;
+    }
+    .error-msg.show { display: block; }
+
+    /* ===== RESPONSIVE ===== */
+    @media (max-width: 640px) {
+      .header h1 { font-size: 1.6rem; }
+      .search-row { flex-direction: column; }
+      .movie-card { grid-template-columns: 1fr; }
+      .movie-poster, .movie-poster-placeholder { display: none; }
+      .filters { grid-template-columns: 1fr 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <!-- HEADER -->
+    <header class="header">
+      <h1>🎬 CinéSearch</h1>
+      <p>Moteur de recherche full-text connecté à Elasticsearch — Index <code>movies_clean</code></p>
+    </header>
+
+    <!-- SEARCH -->
+    <section class="search-section" id="search-section">
+      <div class="search-row">
+        <div class="search-input-wrap">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+          <input type="text" id="search-input" placeholder="Rechercher un film par titre ou synopsis…" autocomplete="off" />
+        </div>
+        <button class="btn-search" id="btn-search">Rechercher</button>
+      </div>
+
+      <div class="filters">
+        <div class="filter-group">
+          <label for="filter-genre">Genre</label>
+          <select id="filter-genre">
+            <option value="">Tous les genres</option>
+          </select>
+        </div>
+        <div class="filter-group">
+          <label for="filter-lang">Langue</label>
+          <select id="filter-lang">
+            <option value="">Toutes les langues</option>
+          </select>
+        </div>
+        <div class="filter-group">
+          <label for="filter-year-min">Année min</label>
+          <input type="number" id="filter-year-min" placeholder="ex: 1990" min="1870" max="2030" />
+        </div>
+        <div class="filter-group">
+          <label for="filter-year-max">Année max</label>
+          <input type="number" id="filter-year-max" placeholder="ex: 2024" min="1870" max="2030" />
+        </div>
+        <div class="filter-group">
+          <label for="filter-vote">Note min</label>
+          <input type="number" id="filter-vote" placeholder="ex: 7" min="0" max="10" step="0.5" />
+        </div>
+      </div>
+    </section>
+
+    <!-- STATUS -->
+    <div class="status-bar" id="status-bar" style="display:none;">
+      <span class="count" id="result-count"></span>
+      <span class="time" id="result-time"></span>
+    </div>
+
+    <!-- ERROR -->
+    <div class="error-msg" id="error-msg"></div>
+
+    <!-- LOADING -->
+    <div class="loading" id="loading">
+      <div class="spinner"></div>
+      <p style="color:var(--text-secondary);">Recherche en cours…</p>
+    </div>
+
+    <!-- RESULTS -->
+    <div class="results" id="results"></div>
+
+    <!-- EMPTY STATE (initial) -->
+    <div class="empty-state" id="empty-state">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zM9.5 14A4.5 4.5 0 1 1 14 9.5 4.5 4.5 0 0 1 9.5 14z"/></svg>
+      <h3>Commencez votre recherche</h3>
+      <p>Tapez un mot-clé pour explorer la base de films</p>
+    </div>
+
+    <!-- PAGINATION -->
+    <div class="pagination" id="pagination"></div>
+  </div>
+
+<script>
+// ===== CONFIGURATION =====
+const ES_URL = 'http://localhost:9200';
+const INDEX   = 'movies_clean';
+const PAGE_SIZE = 10;
+
+let currentPage = 0;
+let lastQuery = null;
+
+// ===== DOM REFS =====
+const $input     = document.getElementById('search-input');
+const $btnSearch = document.getElementById('btn-search');
+const $genre     = document.getElementById('filter-genre');
+const $lang      = document.getElementById('filter-lang');
+const $yearMin   = document.getElementById('filter-year-min');
+const $yearMax   = document.getElementById('filter-year-max');
+const $voteMin   = document.getElementById('filter-vote');
+const $results   = document.getElementById('results');
+const $status    = document.getElementById('status-bar');
+const $count     = document.getElementById('result-count');
+const $time      = document.getElementById('result-time');
+const $loading   = document.getElementById('loading');
+const $error     = document.getElementById('error-msg');
+const $empty     = document.getElementById('empty-state');
+const $pagination = document.getElementById('pagination');
+
+// ===== INIT: charger les facettes (genres + langues) =====
+async function loadFacets() {
+  try {
+    const body = {
+      size: 0,
+      aggs: {
+        genres:   { terms: { field: 'genres',            size: 50 } },
+        langues:  { terms: { field: 'original_language', size: 50 } }
+      }
+    };
+    const res = await fetch(`${ES_URL}/${INDEX}/_search`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    if (!res.ok) return;
+    const data = await res.json();
+
+    (data.aggregations.genres.buckets || []).forEach(b => {
+      const opt = document.createElement('option');
+      opt.value = b.key; opt.textContent = `${b.key} (${b.doc_count})`;
+      $genre.appendChild(opt);
+    });
+    (data.aggregations.langues.buckets || []).forEach(b => {
+      const opt = document.createElement('option');
+      opt.value = b.key; opt.textContent = `${b.key} (${b.doc_count})`;
+      $lang.appendChild(opt);
+    });
+  } catch (_) { /* silent — filters stay empty */ }
+}
+
+// ===== BUILD QUERY =====
+function buildQuery(from = 0) {
+  const text    = $input.value.trim();
+  const genre   = $genre.value;
+  const lang    = $lang.value;
+  const yearMin = $yearMin.value;
+  const yearMax = $yearMax.value;
+  const voteMin = $voteMin.value;
+
+  // --- must clauses ---
+  const must = [];
+  if (text) {
+    must.push({
+      multi_match: {
+        query: text,
+        fields: ['title^3', 'title.keyword^5', 'overview', 'tagline^2', 'keywords^1.5'],
+        type: 'best_fields',
+        fuzziness: 'AUTO'
+      }
+    });
+  }
+
+  // --- filter clauses ---
+  const filter = [];
+  if (genre)   filter.push({ term: { genres: genre } });
+  if (lang)    filter.push({ term: { original_language: lang } });
+  if (yearMin) filter.push({ range: { release_date: { gte: `${yearMin}-01-01` } } });
+  if (yearMax) filter.push({ range: { release_date: { lte: `${yearMax}-12-31` } } });
+  if (voteMin) filter.push({ range: { vote_average:  { gte: parseFloat(voteMin) } } });
+
+  const query = (must.length || filter.length)
+    ? { bool: { must: must.length ? must : [{ match_all: {} }], filter } }
+    : { match_all: {} };
+
+  return {
+    from,
+    size: PAGE_SIZE,
+    query,
+    _source: ['title','overview','genres','original_language','release_date',
+              'vote_average','vote_count','popularity','runtime','poster_path',
+              'tagline','credits','production_companies'],
+    highlight: {
+      fields: {
+        title:    { number_of_fragments: 0 },
+        overview: { fragment_size: 200, number_of_fragments: 1 }
+      },
+      pre_tags: ['<mark>'], post_tags: ['</mark>']
+    }
+  };
+}
+
+// ===== SEARCH =====
+async function search(page = 0) {
+  currentPage = page;
+  const from = page * PAGE_SIZE;
+  const body = buildQuery(from);
+  lastQuery = body;
+
+  // UI states
+  $loading.classList.add('show');
+  $error.classList.remove('show');
+  $results.innerHTML = '';
+  $pagination.innerHTML = '';
+  $status.style.display = 'none';
+  $empty.style.display = 'none';
+
+  const t0 = performance.now();
+
+  try {
+    const res = await fetch(`${ES_URL}/${INDEX}/_search`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      throw new Error(errData.error?.reason || `Erreur HTTP ${res.status}`);
+    }
+
+    const data = await res.json();
+    const took = Math.round(performance.now() - t0);
+    const total = data.hits.total.value;
+
+    $loading.classList.remove('show');
+    $status.style.display = 'flex';
+    $count.innerHTML = `<strong>${total.toLocaleString('fr-FR')}</strong> résultat${total !== 1 ? 's' : ''}`;
+    $time.textContent = `${took} ms (ES: ${data.took} ms)`;
+
+    if (total === 0) {
+      $empty.style.display = 'block';
+      $empty.querySelector('h3').textContent = 'Aucun résultat';
+      $empty.querySelector('p').textContent = 'Essayez avec d\'autres termes ou filtres.';
+      return;
+    }
+
+    renderResults(data.hits.hits);
+    renderPagination(total);
+
+  } catch (err) {
+    $loading.classList.remove('show');
+    $error.textContent = `⚠ Erreur : ${err.message}. Vérifiez qu'Elasticsearch est démarré sur ${ES_URL}.`;
+    $error.classList.add('show');
+  }
+}
+
+// ===== RENDER =====
+function renderResults(hits) {
+  $results.innerHTML = hits.map(hit => {
+    const s = hit._source;
+    const hl = hit.highlight || {};
+    const title = hl.title ? hl.title[0] : escapeHtml(s.title || 'Sans titre');
+    const overview = hl.overview ? hl.overview[0] : escapeHtml((s.overview || '').substring(0, 250));
+    const year = s.release_date ? s.release_date.substring(0, 4) : '—';
+    const genres = Array.isArray(s.genres) ? s.genres : (s.genres ? [s.genres] : []);
+    const lang = s.original_language || '—';
+    const vote = s.vote_average != null ? Number(s.vote_average).toFixed(1) : '—';
+    const voteCount = s.vote_count != null ? Number(s.vote_count).toLocaleString('fr-FR') : '—';
+    const runtime = s.runtime ? `${Math.round(s.runtime)} min` : '';
+    const score = hit._score ? hit._score.toFixed(2) : '—';
+    const posterUrl = s.poster_path ? `https://image.tmdb.org/t/p/w154${s.poster_path}` : '';
+
+    const posterHtml = posterUrl
+      ? `<img class="movie-poster" src="${posterUrl}" alt="${escapeHtml(s.title)}" loading="lazy" onerror="this.outerHTML='<div class=movie-poster-placeholder>🎬</div>'" />`
+      : `<div class="movie-poster-placeholder">🎬</div>`;
+
+    const genreBadges = genres.slice(0, 4).map(g => `<span class="badge badge-genre">${escapeHtml(g)}</span>`).join('');
+
+    return `
+      <article class="movie-card">
+        ${posterHtml}
+        <div class="movie-info">
+          <h3>${title} <span class="year">(${year})</span></h3>
+          <div class="movie-meta">
+            ${genreBadges}
+            <span class="badge badge-lang">${escapeHtml(lang.toUpperCase())}</span>
+            <span class="badge badge-score">★ ${vote}</span>
+          </div>
+          <p class="movie-overview">${overview || '<em>Pas de synopsis disponible.</em>'}</p>
+          <div class="movie-footer">
+            <span>🗳 ${voteCount} votes</span>
+            ${runtime ? `<span>⏱ ${runtime}</span>` : ''}
+            <span>📊 Score ES: ${score}</span>
+          </div>
+        </div>
+      </article>`;
+  }).join('');
+}
+
+function renderPagination(total) {
+  const totalPages = Math.ceil(total / PAGE_SIZE);
+  if (totalPages <= 1) return;
+
+  const maxButtons = 7;
+  let startP = Math.max(0, currentPage - Math.floor(maxButtons / 2));
+  let endP = Math.min(totalPages, startP + maxButtons);
+  if (endP - startP < maxButtons) startP = Math.max(0, endP - maxButtons);
+
+  let html = `<button ${currentPage === 0 ? 'disabled' : ''} onclick="search(${currentPage - 1})">← Préc.</button>`;
+  for (let i = startP; i < endP; i++) {
+    html += `<button class="${i === currentPage ? 'active' : ''}" onclick="search(${i})">${i + 1}</button>`;
+  }
+  html += `<button ${currentPage >= totalPages - 1 ? 'disabled' : ''} onclick="search(${currentPage + 1})">Suiv. →</button>`;
+  $pagination.innerHTML = html;
+}
+
+function escapeHtml(str) {
+  const d = document.createElement('div');
+  d.textContent = str;
+  return d.innerHTML;
+}
+
+// ===== EVENT LISTENERS =====
+$btnSearch.addEventListener('click', () => search(0));
+$input.addEventListener('keydown', e => { if (e.key === 'Enter') search(0); });
+// Filtres: relancer la recherche automatiquement
+[$genre, $lang, $voteMin].forEach(el => el.addEventListener('change', () => search(0)));
+
+// ===== BOOT =====
+loadFacets();
+</script>
+</body>
+</html>
